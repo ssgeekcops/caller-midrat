@@ -6,9 +6,12 @@ import { generateStreamTwiML } from '../telephony/twilio/twiml.js';
 import { MediaStreamHandler } from '../telephony/twilio/mediaStream.ws.js';
 import { Agent } from '../agent/agent.js';
 import { JSONLStore } from '../storage/jsonl.store.js';
-import { outboundCaller } from '../telephony/twilio/outbound.js'; // ✅ ADD THIS
+import { OutboundCaller } from '../telephony/twilio/outbound.js';
 
 const logger = createLogger('HTTPServer');
+
+// ✅ SINGLE outbound caller instance
+const outboundCaller = new OutboundCaller();
 
 export interface ServerConfig {
   port: number;
@@ -25,7 +28,10 @@ export class HTTPServer {
   constructor(private config: ServerConfig) {
     this.app = express();
     this.server = createServer(this.app);
-    this.wss = new WebSocketServer({ server: this.server, path: '/media-stream' });
+    this.wss = new WebSocketServer({
+      server: this.server,
+      path: '/media-stream',
+    });
 
     this.setupMiddleware();
     this.setupRoutes();
@@ -36,11 +42,11 @@ export class HTTPServer {
     this.app.use(express.json());
     this.app.use(express.urlencoded({ extended: true }));
 
-    // Logging middleware
+    // Request logging
     this.app.use((req, _res, next) => {
-      logger.info(`${req.method} ${req.path}`, { 
+      logger.info(`${req.method} ${req.path}`, {
         query: req.query,
-        body: req.body 
+        body: req.body,
       });
       next();
     });
@@ -49,75 +55,84 @@ export class HTTPServer {
   private setupRoutes(): void {
     // Health check
     this.app.get('/health', (_req: Request, res: Response) => {
-      res.json({ status: 'ok', timestamp: new Date().toISOString() });
+      return res.json({
+        status: 'ok',
+        timestamp: new Date().toISOString(),
+      });
     });
 
-    // 🔥 NEW: Trigger outbound call
+    /**
+     * 🔥 TEMP: Trigger outbound call
+     * Used instead of Railway shell
+     */
     this.app.post('/api/call', async (req: Request, res: Response) => {
       try {
         const { to } = req.body;
 
         if (!to) {
-          return res.status(400).json({ error: "Missing 'to' phone number" });
+          return res.status(400).json({
+            error: "Missing 'to' phone number",
+          });
         }
 
         const callSid = await outboundCaller.makeCall({
           to,
-          twimlUrl: `${process.env.PUBLIC_URL}/api/voice`,
           statusCallback: `${process.env.PUBLIC_URL}/api/status`,
         });
 
         logger.info('Outbound call initiated', { to, callSid });
 
-        res.json({
+        return res.json({
           success: true,
           callSid,
         });
       } catch (error: any) {
         logger.error('Failed to initiate outbound call', { error });
-        res.status(500).json({
+
+        return res.status(500).json({
           error: error.message || 'Failed to initiate call',
         });
       }
     });
 
-    // Voice webhook - called when Twilio connects to the call
+    // Twilio voice webhook (TwiML)
     this.app.post('/api/voice', (req: Request, res: Response) => {
       try {
         const streamUrl = `wss://${req.get('host')}/media-stream`;
         const twiml = generateStreamTwiML({ streamUrl });
-        
-        logger.info('Voice webhook called', { 
+
+        logger.info('Voice webhook called', {
           callSid: req.body.CallSid,
           from: req.body.From,
-          to: req.body.To 
+          to: req.body.To,
         });
 
         res.type('text/xml');
-        res.send(twiml);
+        return res.send(twiml);
       } catch (error) {
         logger.error('Error in voice webhook', { error });
-        res.status(500).send('Internal Server Error');
+        return res.status(500).send('Internal Server Error');
       }
     });
 
-    // Status callback
+    // Twilio status callback
     this.app.post('/api/status', (req: Request, res: Response) => {
       logger.info('Status callback received', {
         callSid: req.body.CallSid,
         callStatus: req.body.CallStatus,
       });
-      res.sendStatus(200);
+
+      return res.sendStatus(200);
     });
 
     // Get all leads
     this.app.get('/api/leads', async (_req: Request, res: Response) => {
       try {
         const leads = await this.config.leadsStore.readAll();
-        res.json({ leads, count: leads.length });
+        return res.json({ leads, count: leads.length });
       } catch (error) {
         logger.error('Error fetching leads', { error });
-        res.status(500).json({ error: 'Failed to fetch leads' });
+        return res.status(500).json({ error: 'Failed to fetch leads' });
       }
     });
 
@@ -125,14 +140,15 @@ export class HTTPServer {
     this.app.get('/api/leads/:id', async (req: Request, res: Response) => {
       try {
         const lead = await this.config.leadsStore.findById(req.params.id);
+
         if (!lead) {
-          res.status(404).json({ error: 'Lead not found' });
-          return;
+          return res.status(404).json({ error: 'Lead not found' });
         }
-        res.json(lead);
+
+        return res.json(lead);
       } catch (error) {
         logger.error('Error fetching lead', { error });
-        res.status(500).json({ error: 'Failed to fetch lead' });
+        return res.status(500).json({ error: 'Failed to fetch lead' });
       }
     });
   }
@@ -185,12 +201,13 @@ export class HTTPServer {
           logger.error('Error closing WebSocket server', { error: err });
           return reject(err);
         }
-        
+
         this.server.close((err) => {
           if (err) {
             logger.error('Error closing HTTP server', { error: err });
             return reject(err);
           }
+
           logger.info('Server stopped');
           resolve();
         });
