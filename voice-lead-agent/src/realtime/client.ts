@@ -137,6 +137,18 @@ export class OpenAIRealtimeClient {
     }
   }
 
+  async send(event: RealtimeEvent): Promise<void> {
+    try {
+      if (!this.isConnected) {
+        throw new Error('Client is not connected');
+      }
+      this.sendEvent(event);
+    } catch (error) {
+      logger.error('Failed to send event', { error, eventType: event.type });
+      throw error;
+    }
+  }
+
   async disconnect(): Promise<void> {
     try {
       if (this.ws && this.isConnected) {
@@ -165,6 +177,21 @@ export class OpenAIRealtimeClient {
       });
     } catch (error) {
       logger.error('Failed to send audio', { error });
+      throw error;
+    }
+  }
+
+  async commitAudio(): Promise<void> {
+    try {
+      if (!this.isConnected) {
+        throw new Error('Client is not connected');
+      }
+
+      this.sendEvent({
+        type: 'input_audio_buffer.commit',
+      });
+    } catch (error) {
+      logger.error('Failed to commit audio buffer', { error });
       throw error;
     }
   }

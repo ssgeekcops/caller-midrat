@@ -3,6 +3,7 @@ import { Lead, createLead } from './lead.schema.js';
 import { JSONLStore } from '../storage/jsonl.store.js';
 import { createLogger } from '../utils/logger.js';
 import { OpenAIRealtimeClient } from '../realtime/client.js';
+import { convertOpenAIToTwilio } from '../realtime/audio.js';
 import { SYSTEM_PROMPT } from '../realtime/prompts.js';
 
 
@@ -13,10 +14,15 @@ export interface AgentConfig {
   leadsStore: JSONLStore;
 }
 
+interface MediaStreamSender {
+  sendAudio: (audioData: string) => void;
+}
+
 export class Agent {
   private stateMachine: StateMachine;
   private lead: Lead;
   private realtimeClient: OpenAIRealtimeClient | null = null;
+  private mediaStream: MediaStreamSender | null = null;
 
   constructor(
     phoneNumber: string,
@@ -30,42 +36,42 @@ export class Agent {
     });
   }
 
-async initialize(): Promise<void> {
-  try {
-    // Save initial lead state
-    await this.config.leadsStore.append(this.lead);
+  async initialize(): Promise<void> {
+    try {
+      // Save initial lead state
+      await this.config.leadsStore.append(this.lead);
 
-    // Initialize OpenAI Realtime client
-    this.realtimeClient = new OpenAIRealtimeClient({
-      apiKey: this.config.openaiApiKey,
-      onMessage: this.handleRealtimeMessage.bind(this),
-      onError: this.handleRealtimeError.bind(this),
-      onAudioResponse: this.handleAudioResponse.bind(this),
-    });
+      // Initialize OpenAI Realtime client
+      this.realtimeClient = new OpenAIRealtimeClient({
+        apiKey: this.config.openaiApiKey,
+        onMessage: this.handleRealtimeMessage.bind(this),
+        onError: this.handleRealtimeError.bind(this),
+        onAudioResponse: this.handleAudioResponse.bind(this),
+      });
 
-    // Connect to OpenAI Realtime
-    await this.realtimeClient.connect();
+      // Connect to OpenAI Realtime
+      await this.realtimeClient.connect();
 
-    // 🔊 CRITICAL: tell the AI to speak
-    await this.realtimeClient.send({
-      type: 'response.create',
-      response: {
-        instructions: `
+      // 🔊 CRITICAL: tell the AI to speak
+      await this.realtimeClient.send({
+        type: 'response.create',
+        response: {
+          instructions: `
 ${SYSTEM_PROMPT}
 
 Start the call now.
 Greet the user naturally and ask for their full name.
 `,
-        modalities: ['audio'],
-      },
-    });
+          modalities: ['audio', 'text'],
+        },
+      });
 
-    logger.info('Agent initialized', { leadId: this.lead.id });
-  } catch (error) {
-    logger.error('Failed to initialize agent', { error, leadId: this.lead.id });
-    throw error;
+      logger.info('Agent initialized', { leadId: this.lead.id });
+    } catch (error) {
+      logger.error('Failed to initialize agent', { error, leadId: this.lead.id });
+      throw error;
+    }
   }
-}
 
 
   private handleRealtimeMessage(message: any): void {
@@ -80,7 +86,14 @@ Greet the user naturally and ask for their full name.
 
   private handleAudioResponse(_audioData: string): void {
     logger.debug('Received audio response from OpenAI', { leadId: this.lead.id });
-    // Audio response will be handled by the MediaStreamHandler
+    if (!this.mediaStream) {
+      logger.warn('Media stream not ready for audio response', { leadId: this.lead.id });
+      return;
+    }
+
+    const audioBuffer = Buffer.from(_audioData, 'base64');
+    const twilioAudio = convertOpenAIToTwilio(audioBuffer);
+    this.mediaStream.sendAudio(twilioAudio);
   }
 
   private async processConversationUpdate(_update: any): Promise<void> {
@@ -114,6 +127,14 @@ Greet the user naturally and ask for their full name.
       throw new Error('Realtime client not initialized');
     }
     await this.realtimeClient.sendAudio(audioData);
+  }
+
+  async requestResponse(): Promise<void> {
+    if (!this.realtimeClient) {
+      throw new Error('Realtime client not initialized');
+    }
+    await this.realtimeClient.commitAudio();
+    await this.realtimeClient.createResponse();
   }
 
   async updateLead(updates: Partial<Lead>): Promise<void> {
@@ -161,5 +182,9 @@ Greet the user naturally and ask for their full name.
 
   getRealtimeClient(): OpenAIRealtimeClient | null {
     return this.realtimeClient;
+  }
+
+  setMediaStream(handler: MediaStreamSender): void {
+    this.mediaStream = handler;
   }
 }
