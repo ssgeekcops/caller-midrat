@@ -17,7 +17,7 @@ export class Agent {
   private realtimeClient: OpenAIRealtimeClient | null = null;
 
   constructor(
-    private phoneNumber: string,
+    phoneNumber: string,
     private config: AgentConfig
   ) {
     this.stateMachine = new StateMachine(AgentState.GREETING);
@@ -38,6 +38,7 @@ export class Agent {
         apiKey: this.config.openaiApiKey,
         onMessage: this.handleRealtimeMessage.bind(this),
         onError: this.handleRealtimeError.bind(this),
+        onAudioResponse: this.handleAudioResponse.bind(this),
       });
 
       await this.realtimeClient.connect();
@@ -58,7 +59,12 @@ export class Agent {
     logger.error('Realtime client error', { error, leadId: this.lead.id });
   }
 
-  private async processConversationUpdate(update: any): Promise<void> {
+  private handleAudioResponse(_audioData: string): void {
+    logger.debug('Received audio response from OpenAI', { leadId: this.lead.id });
+    // Audio response will be handled by the MediaStreamHandler
+  }
+
+  private async processConversationUpdate(_update: any): Promise<void> {
     // Extract information from conversation
     // Update lead data based on conversation
     // Transition states as needed

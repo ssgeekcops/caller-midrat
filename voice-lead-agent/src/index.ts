@@ -31,7 +31,8 @@ async function main() {
     logger.info(`Health check: ${env.PUBLIC_URL}/health`);
 
     // Initialize outbound caller (for making calls programmatically)
-    const outboundCaller = new OutboundCaller();
+    // Note: outboundCaller is available for making calls when needed
+    const _outboundCaller = new OutboundCaller();
 
     // Example: Make an outbound call (commented out)
     // To make a call, uncomment and provide a phone number:

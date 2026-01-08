@@ -6,7 +6,6 @@ import { generateStreamTwiML } from '../telephony/twilio/twiml.js';
 import { MediaStreamHandler } from '../telephony/twilio/mediaStream.ws.js';
 import { Agent } from '../agent/agent.js';
 import { JSONLStore } from '../storage/jsonl.store.js';
-import { env } from '../config/env.js';
 
 const logger = createLogger('HTTPServer');
 
@@ -37,7 +36,7 @@ export class HTTPServer {
     this.app.use(express.urlencoded({ extended: true }));
 
     // Logging middleware
-    this.app.use((req, res, next) => {
+    this.app.use((req, _res, next) => {
       logger.info(`${req.method} ${req.path}`, { 
         query: req.query,
         body: req.body 
@@ -48,7 +47,7 @@ export class HTTPServer {
 
   private setupRoutes(): void {
     // Health check
-    this.app.get('/health', (req: Request, res: Response) => {
+    this.app.get('/health', (_req: Request, res: Response) => {
       res.json({ status: 'ok', timestamp: new Date().toISOString() });
     });
 
@@ -82,7 +81,7 @@ export class HTTPServer {
     });
 
     // Get all leads
-    this.app.get('/api/leads', async (req: Request, res: Response) => {
+    this.app.get('/api/leads', async (_req: Request, res: Response) => {
       try {
         const leads = await this.config.leadsStore.readAll();
         res.json({ leads, count: leads.length });
@@ -97,7 +96,8 @@ export class HTTPServer {
       try {
         const lead = await this.config.leadsStore.findById(req.params.id);
         if (!lead) {
-          return res.status(404).json({ error: 'Lead not found' });
+          res.status(404).json({ error: 'Lead not found' });
+          return;
         }
         res.json(lead);
       } catch (error) {

@@ -1,7 +1,7 @@
 import WebSocket from 'ws';
 import { createLogger } from '../../utils/logger.js';
 import { Agent } from '../../agent/agent.js';
-import { convertTwilioToOpenAI, convertOpenAIToTwilio } from '../../realtime/audio.js';
+import { convertTwilioToOpenAI } from '../../realtime/audio.js';
 
 const logger = createLogger('MediaStream');
 
@@ -93,8 +93,12 @@ export class MediaStreamHandler {
         // Convert Twilio μ-law audio to format OpenAI expects
         const audioBuffer = convertTwilioToOpenAI(message.media.payload);
         
-        // Send to OpenAI Realtime API
-        await this.agent.processAudio(audioBuffer);
+        // Send to OpenAI Realtime API - convert Buffer to ArrayBuffer
+        const arrayBuffer = audioBuffer.buffer.slice(
+          audioBuffer.byteOffset,
+          audioBuffer.byteOffset + audioBuffer.byteLength
+        ) as ArrayBuffer;
+        await this.agent.processAudio(arrayBuffer);
         
         // Note: Response audio from OpenAI will be handled by the realtime client events
       } catch (error) {
