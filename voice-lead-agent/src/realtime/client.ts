@@ -137,6 +137,18 @@ export class OpenAIRealtimeClient {
     }
   }
 
+  async send(event: RealtimeEvent): Promise<void> {
+    try {
+      if (!this.isConnected) {
+        throw new Error('Client is not connected');
+      }
+      this.sendEvent(event);
+    } catch (error) {
+      logger.error('Failed to send event', { error, eventType: event.type });
+      throw error;
+    }
+  }
+
   async disconnect(): Promise<void> {
     try {
       if (this.ws && this.isConnected) {
