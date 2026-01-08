@@ -62,7 +62,7 @@ ${SYSTEM_PROMPT}
 Start the call now.
 Greet the user naturally and ask for their full name.
 `,
-          modalities: ['audio'],
+          modalities: ['audio', 'text'],
         },
       });
 

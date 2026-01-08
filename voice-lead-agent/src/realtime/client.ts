@@ -204,6 +204,9 @@ export class OpenAIRealtimeClient {
       
       this.sendEvent({
         type: 'response.create',
+        response: {
+          modalities: ['audio', 'text'],
+        },
       });
     } catch (error) {
       logger.error('Failed to create response', { error });
