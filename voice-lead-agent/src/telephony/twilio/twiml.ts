@@ -9,17 +9,31 @@ export interface TwiMLOptions {
 /**
  * Generate TwiML for connecting Twilio call to WebSocket stream
  */
+/**
+ * Generate TwiML for connecting Twilio call to WebSocket stream
+ * Includes an initial greeting to avoid dead air
+ */
 export function generateStreamTwiML(options: TwiMLOptions): string {
   const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
+  <Say voice="alice">
+    Hello, this is an automated assistant calling for a quick conversation.
+  </Say>
+
+  <Pause length="1"/>
+
   <Connect>
     <Stream url="${options.streamUrl}" />
   </Connect>
 </Response>`;
 
-  logger.debug('Generated TwiML for stream', { streamUrl: options.streamUrl });
+  logger.debug('Generated TwiML for stream with greeting', {
+    streamUrl: options.streamUrl,
+  });
+
   return twiml;
 }
+
 
 /**
  * Generate TwiML for saying a message
