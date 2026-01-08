@@ -15,7 +15,7 @@ export interface MediaStreamMessage {
   start?: {
     streamSid: string;
     callSid: string;
-    customParameters: any;
+    customParameters: Record<string, unknown>;
   };
   stop?: {
     streamSid: string;

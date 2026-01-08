@@ -53,7 +53,13 @@ export class OutboundCaller {
     }
   }
 
-  async getCallStatus(callSid: string): Promise<any> {
+  async getCallStatus(callSid: string): Promise<{
+    sid: string;
+    status: string;
+    duration: string | null;
+    to: string;
+    from: string;
+  }> {
     try {
       const call = await this.client.calls(callSid).fetch();
       return {

@@ -23,8 +23,8 @@ export class JSONLStore {
       const content = await fs.readFile(this.filePath, 'utf-8');
       const lines = content.trim().split('\n').filter(line => line.length > 0);
       return lines.map(line => JSON.parse(line) as Lead);
-    } catch (error: any) {
-      if (error.code === 'ENOENT') {
+    } catch (error: unknown) {
+      if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
         logger.info('JSONL file does not exist yet, returning empty array');
         return [];
       }
