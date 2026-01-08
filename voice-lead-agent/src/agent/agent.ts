@@ -3,6 +3,8 @@ import { Lead, createLead } from './lead.schema.js';
 import { JSONLStore } from '../storage/jsonl.store.js';
 import { createLogger } from '../utils/logger.js';
 import { OpenAIRealtimeClient } from '../realtime/client.js';
+import { SYSTEM_PROMPT } from '../realtime/prompts.js';
+
 
 const logger = createLogger('Agent');
 
@@ -28,26 +30,43 @@ export class Agent {
     });
   }
 
-  async initialize(): Promise<void> {
-    try {
-      // Save initial lead state
-      await this.config.leadsStore.append(this.lead);
-      
-      // Initialize OpenAI Realtime client
-      this.realtimeClient = new OpenAIRealtimeClient({
-        apiKey: this.config.openaiApiKey,
-        onMessage: this.handleRealtimeMessage.bind(this),
-        onError: this.handleRealtimeError.bind(this),
-        onAudioResponse: this.handleAudioResponse.bind(this),
-      });
+async initialize(): Promise<void> {
+  try {
+    // Save initial lead state
+    await this.config.leadsStore.append(this.lead);
 
-      await this.realtimeClient.connect();
-      logger.info('Agent initialized', { leadId: this.lead.id });
-    } catch (error) {
-      logger.error('Failed to initialize agent', { error, leadId: this.lead.id });
-      throw error;
-    }
+    // Initialize OpenAI Realtime client
+    this.realtimeClient = new OpenAIRealtimeClient({
+      apiKey: this.config.openaiApiKey,
+      onMessage: this.handleRealtimeMessage.bind(this),
+      onError: this.handleRealtimeError.bind(this),
+      onAudioResponse: this.handleAudioResponse.bind(this),
+    });
+
+    // Connect to OpenAI Realtime
+    await this.realtimeClient.connect();
+
+    // 🔊 CRITICAL: tell the AI to speak
+    await this.realtimeClient.send({
+      type: 'response.create',
+      response: {
+        instructions: `
+${SYSTEM_PROMPT}
+
+Start the call now.
+Greet the user naturally and ask for their full name.
+`,
+        modalities: ['audio'],
+      },
+    });
+
+    logger.info('Agent initialized', { leadId: this.lead.id });
+  } catch (error) {
+    logger.error('Failed to initialize agent', { error, leadId: this.lead.id });
+    throw error;
   }
+}
+
 
   private handleRealtimeMessage(message: any): void {
     logger.debug('Received realtime message', { message, leadId: this.lead.id });
