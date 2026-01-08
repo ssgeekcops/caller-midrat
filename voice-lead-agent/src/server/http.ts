@@ -6,6 +6,7 @@ import { generateStreamTwiML } from '../telephony/twilio/twiml.js';
 import { MediaStreamHandler } from '../telephony/twilio/mediaStream.ws.js';
 import { Agent } from '../agent/agent.js';
 import { JSONLStore } from '../storage/jsonl.store.js';
+import { outboundCaller } from '../telephony/twilio/outbound.js'; // ✅ ADD THIS
 
 const logger = createLogger('HTTPServer');
 
@@ -51,6 +52,35 @@ export class HTTPServer {
       res.json({ status: 'ok', timestamp: new Date().toISOString() });
     });
 
+    // 🔥 NEW: Trigger outbound call
+    this.app.post('/api/call', async (req: Request, res: Response) => {
+      try {
+        const { to } = req.body;
+
+        if (!to) {
+          return res.status(400).json({ error: "Missing 'to' phone number" });
+        }
+
+        const callSid = await outboundCaller.makeCall({
+          to,
+          twimlUrl: `${process.env.PUBLIC_URL}/api/voice`,
+          statusCallback: `${process.env.PUBLIC_URL}/api/status`,
+        });
+
+        logger.info('Outbound call initiated', { to, callSid });
+
+        res.json({
+          success: true,
+          callSid,
+        });
+      } catch (error: any) {
+        logger.error('Failed to initiate outbound call', { error });
+        res.status(500).json({
+          error: error.message || 'Failed to initiate call',
+        });
+      }
+    });
+
     // Voice webhook - called when Twilio connects to the call
     this.app.post('/api/voice', (req: Request, res: Response) => {
       try {
@@ -71,7 +101,7 @@ export class HTTPServer {
       }
     });
 
-    // Status callback - called for call status updates
+    // Status callback
     this.app.post('/api/status', (req: Request, res: Response) => {
       logger.info('Status callback received', {
         callSid: req.body.CallSid,
@@ -112,11 +142,9 @@ export class HTTPServer {
       logger.info('WebSocket connection established');
 
       try {
-        // Extract phone number from query params or use a default
         const url = new URL(req.url || '', `http://${req.headers.host}`);
         const phoneNumber = url.searchParams.get('phone') || 'unknown';
 
-        // Create agent for this call
         const agent = new Agent(phoneNumber, {
           openaiApiKey: this.config.openaiApiKey,
           leadsStore: this.config.leadsStore,
@@ -125,7 +153,6 @@ export class HTTPServer {
         await agent.initialize();
         this.agents.set(agent.getLead().id, agent);
 
-        // Create media stream handler
         new MediaStreamHandler(ws, agent);
 
         ws.on('close', () => {
