@@ -169,6 +169,21 @@ export class OpenAIRealtimeClient {
     }
   }
 
+  async commitAudio(): Promise<void> {
+    try {
+      if (!this.isConnected) {
+        throw new Error('Client is not connected');
+      }
+
+      this.sendEvent({
+        type: 'input_audio_buffer.commit',
+      });
+    } catch (error) {
+      logger.error('Failed to commit audio buffer', { error });
+      throw error;
+    }
+  }
+
   async createResponse(): Promise<void> {
     try {
       if (!this.isConnected) {
