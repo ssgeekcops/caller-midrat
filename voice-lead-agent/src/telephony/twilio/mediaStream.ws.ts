@@ -25,12 +25,15 @@ export interface MediaStreamMessage {
 export class MediaStreamHandler {
   private streamSid: string | null = null;
   private callSid: string | null = null;
+  private responseTimer: NodeJS.Timeout | null = null;
+  private responseDelayMs = 600;
 
   constructor(
     private ws: WebSocket,
     private agent: Agent
   ) {
     logger.info('MediaStream handler created');
+    this.agent.setMediaStream(this);
     this.setupWebSocket();
   }
 
@@ -99,12 +102,26 @@ export class MediaStreamHandler {
           audioBuffer.byteOffset + audioBuffer.byteLength
         ) as ArrayBuffer;
         await this.agent.processAudio(arrayBuffer);
-        
-        // Note: Response audio from OpenAI will be handled by the realtime client events
+
+        this.scheduleResponse();
       } catch (error) {
         logger.error('Error processing media', { error });
       }
     }
+  }
+
+  private scheduleResponse(): void {
+    if (this.responseTimer) {
+      clearTimeout(this.responseTimer);
+    }
+
+    this.responseTimer = setTimeout(async () => {
+      try {
+        await this.agent.requestResponse();
+      } catch (error) {
+        logger.error('Error requesting response', { error });
+      }
+    }, this.responseDelayMs);
   }
 
   private async handleStop(message: MediaStreamMessage): Promise<void> {
@@ -114,6 +131,10 @@ export class MediaStreamHandler {
 
   private async handleClose(): Promise<void> {
     try {
+      if (this.responseTimer) {
+        clearTimeout(this.responseTimer);
+        this.responseTimer = null;
+      }
       await this.agent.endCall();
     } catch (error) {
       logger.error('Error closing media stream', { error });
